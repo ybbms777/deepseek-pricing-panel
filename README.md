@@ -32,12 +32,18 @@ node --test        # 10 tests / 38 assertions
 
 ## What the page shows
 
-| Where | What |
+It is a desktop panel, not a scrolling web page: three panes in a viewport-height grid, no page
+scroll, dark/light toggle, keyboard control.
+
+| Pane | What |
 |---|---|
-| Top | Current tier, Beijing clock, countdown to the next switch |
-| Price table | `deepseek-flash` and `deepseek-v4-pro` rates; the live tier highlighted, the other tier in grey parentheses |
-| Next 7 days | One 24-hour bar per day, with peak ranges, weekends and holidays marked |
-| Footer | How the tier was decided, the next switch time, where the numbers come from |
+| Top bar | Live tier, Beijing clock, countdown to the next switch, copy-summary button |
+| Left | Current window progress, the next 4 switches, 7-day totals, and a cost calculator (type input/output tokens → what it costs now vs. moved entirely off-peak) |
+| Middle | 14-day timetable (one 24-hour lane per day, peak as a solid block, "now" rule on today) plus a bar chart of peak hours per day |
+| Right | Selected day detail, an hourly price-multiplier bar chart, and the price table |
+| Bottom | The rule and where the numbers come from |
+
+`↑`/`↓` pick a day, `T` jumps to today, `D` toggles dark mode; clicking a row in the timetable shows that day on the right.
 
 ## Where the numbers come from
 
