@@ -24,5 +24,12 @@ jobs:
       - name: CLI smoke test (exit code must match the tier)
         shell: bash
         run: |
-          node skills/deepseek-pricing-tier/scripts/deepseek_tier.mjs --at 2026-10-12T09:30:00+08:00 --json | grep -q '"tier": "peak"'
+          # The CLI exits 3 for peak / 0 for off-peak by design, so capture the code
+          # instead of letting GitHub's `set -e -o pipefail` turn it into a failure.
+          rc=0
+          node skills/deepseek-pricing-tier/scripts/deepseek_tier.mjs --at 2026-10-12T09:30:00+08:00 --quiet || rc=$?
+          test "$rc" -eq 3
+          rc=0
+          node skills/deepseek-pricing-tier/scripts/deepseek_tier.mjs --at 2026-10-12T12:30:00+08:00 --quiet || rc=$?
+          test "$rc" -eq 0
           node skills/deepseek-pricing-tier/scripts/deepseek_tier.mjs --at 2026-10-02T10:00:00+08:00 --json | grep -q '"reason": "public holiday"'
