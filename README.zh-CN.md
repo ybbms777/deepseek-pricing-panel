@@ -9,6 +9,7 @@
 ![跨平台](https://img.shields.io/badge/platform-any%20browser-success)
 ![内置节假日](https://img.shields.io/badge/China%20holidays-2026%20built--in-orange)
 ![许可](https://img.shields.io/badge/license-MIT-green)
+![测试](https://github.com/ybbms777/deepseek-pricing-panel/actions/workflows/test.yml/badge.svg)
 
 **就一个 HTML 文件。打开它，立刻知道 DeepSeek API 现在按高峰价（全价）还是空闲价（半价）在给你计费** —— 带秒级倒计时，还有一张已经把周末和中国法定节假日算进去的未来 7 天时刻表。
 
@@ -39,7 +40,7 @@
 - **真·节假日感知。** 峰谷判定不是简单的「UTC 工作日 + 小时」。它在「工作日 / 周末」规则之上叠加了国务院公布的 2026 年放假安排（33 天：元旦、春节、清明、劳动节、端午、中秋、国庆）—— 这是「周一九点」和「十一黄金周那个周一九点」的区别，只按工作日算的挂件会算错。
 - **零安装、零依赖、零联网。** 一个约 13 KB 的文件：没有框架、没有 CDN、没有埋点。U 盘、共享盘、内网隔离机、编辑器旁边的 iframe，哪儿都能跑。
 - **只要有浏览器就能用。** 不是 Windows 专用，不是要编译的原生程序，不是要一直开着的容器。
-- **核心逻辑可测试。** 时段调度逻辑与 DOM 解耦，装在 `/*CORE-START*/ … /*CORE-END*/` 段里，可以直接抽到 Node 上断言 —— 22 项断言覆盖时段边界、节假日、下次切换算法与半价不变式。
+- **核心逻辑可测试，而且真的测了。** 时段调度逻辑与 DOM 解耦，装在 `/*CORE-START*/ … /*CORE-END*/` 段里，仓库自带测试：`node --test` 跑 10 个用例 / 38 条断言，覆盖时段边界、节假日、下次切换算法、半价不变式与 CLI 退出码 —— Ubuntu 与 Windows、Node 20 与 22 都跑。
 - **看门道的地方也写清楚了。** 比如顺手记下了一个很多人踩的坑：`deepseek-flash` **不是** V4-Flash（见下）。
 
 ## 快速开始
@@ -50,6 +51,12 @@ cd deepseek-pricing-panel
 ```
 
 浏览器打开 `index.html`，Windows 上也可以直接双击 `打开面板.bat`。
+
+跑测试（Node 20+，零依赖）：
+
+```bash
+node --test        # 10 个用例 / 38 条断言
+```
 
 想把它摆在终端旁边？嵌进去就行：
 
@@ -79,12 +86,30 @@ API 的模型名和模型版本**不是一回事**：
 
 每一行空闲价都正好是高峰价的一半。规则与单价转录自官方定价页；官方随时可能调整，所以请把面板当作「已公布规则的可视化」，而不是规则本身。
 
+## 给 Hermes Agent 用，或写进脚本
+
+仓库里带了一个 Hermes 技能（`skills/deepseek-pricing-tier/`），它的 CLI 直接复用面板**自己的**逻辑 ——
+从 `index.html` 里抽出 `/*CORE-START*/ … /*CORE-END*/` 段并执行，所以面板和 Agent 永远不会算法漂移：
+
+```bash
+node skills/deepseek-pricing-tier/scripts/deepseek_tier.mjs            # 现在
+node skills/deepseek-pricing-tier/scripts/deepseek_tier.mjs --json     # 给 Agent 读
+node skills/deepseek-pricing-tier/scripts/deepseek_tier.mjs --days 7   # 未来切换时刻
+```
+
+退出码 **0** = 空闲（半价）、**3** = 高峰（全价）、**2** = 出错 —— 所以
+`node deepseek_tier.mjs --quiet && run_your_batch` 这个写法本身就能把批处理推迟到便宜时段。
+
+技能里面向 Agent 的那一半，不用打开浏览器就能回答"现在是不是半价、下一次什么时候切"。安装方式：
+把 `skills/deepseek-pricing-tier/` 复制进你的 Hermes 技能目录，或用 `DEEPSEEK_PANEL_HTML`
+指向 `index.html`。
+
 ## 每一条都能溯源
 
 - **时段规则与单价** —— 官方定价页脚注 `api-docs.deepseek.com/quick_start/pricing`。
 - **模型 id 与版本** —— 实调 `GET api.deepseek.com/models`，不是抄博客。
 - **节假日** —— 国务院办公厅《关于 2026 年部分节假日安排的通知》。
-- **逻辑** —— 22 项断言，覆盖 09:00 / 12:00 / 14:00 / 18:00 四个边界、周末、春节与国庆、下次切换算法、以及「空闲价 = 高峰价 × 50%」不变式。
+- **逻辑** —— 仓库自带测试（`node --test`）：10 个用例 / 38 条断言，覆盖 09:00 / 12:00 / 14:00 / 18:00 四个边界、周末、春节与国庆、下次切换算法、「空闲价 = 高峰价 × 50%」不变式，以及 CLI 的退出码。
 
 ## 一分钟改完
 

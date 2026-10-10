@@ -9,6 +9,7 @@
 ![platform](https://img.shields.io/badge/platform-any%20browser-success)
 ![china holidays](https://img.shields.io/badge/China%20holidays-2026%20built--in-orange)
 ![license](https://img.shields.io/badge/license-MIT-green)
+![tests](https://github.com/ybbms777/deepseek-pricing-panel/actions/workflows/test.yml/badge.svg)
 
 **One HTML file. Open it and you instantly see whether DeepSeek's API is billing you at peak (full price) or off-peak (half price) right now** — with a live countdown to the next switch and a 7-day schedule that already knows about weekends and Chinese public holidays.
 
@@ -39,7 +40,10 @@ There are Windows tray indicators, WinUI widgets, KDE Plasma applets, OpenCode/T
 - **Chinese-holiday aware.** Peak detection is not "UTC weekday + hour". It layers the State Council's published 2026 holiday calendar (33 days: New Year, Spring Festival, Qingming, Labour Day, Dragon Boat, Mid-Autumn, National Day) on top of the weekday/weekend rule — the difference between *"9 AM on a Monday"* and *"9 AM on the Monday of Golden Week"*, which weekday-only widgets get wrong.
 - **Zero install, zero dependencies, zero network.** One ~13 KB file: no framework, no CDN, no telemetry. Runs from a USB stick, a network share, an air-gapped machine, or an iframe beside your editor.
 - **Any platform with a browser.** Not Windows-only, not a native app to compile, not a container to keep alive.
-- **Testable core.** The scheduling logic is decoupled from the DOM inside `/*CORE-START*/ … /*CORE-END*/`, so you can lift it into Node and assert on it — 22 assertions cover boundaries, holidays, next-switch math and the halved-price invariant.
+- **Testable core, tested core.** The scheduling logic is decoupled from the DOM inside
+  `/*CORE-START*/ … /*CORE-END*/`, and the repo ships the suite that exercises it: `node --test`
+  runs 10 tests / 38 assertions over boundaries, holidays, next-switch math, the halved-price
+  invariant and the CLI's exit codes — on Ubuntu and Windows, Node 20 and 22.
 - **Documents the traps, not just the clock.** The API model id is not the model version (see below), and a government make-up workday is flagged rather than silently mis-tiered (see FAQ).
 
 ## Quick start
@@ -50,6 +54,12 @@ cd deepseek-pricing-panel
 ```
 
 Open `index.html` in any browser — or double-click `打开面板.bat` on Windows.
+
+Run the suite (Node 20+, zero dependencies):
+
+```bash
+node --test        # 10 tests / 38 assertions
+```
 
 Want it next to your terminal? Embed it:
 
@@ -79,12 +89,33 @@ So `deepseek-flash` is **not** V4-Flash. The legacy ids `deepseek-v4-flash` and 
 
 Off-peak is exactly half on every line. Prices and the schedule are transcribed from the official pricing page; they can change, so treat the panel as a visualiser of the published rule, not as the rule itself.
 
+## Use it from Hermes Agent, or from a script
+
+The repo ships a Hermes skill (`skills/deepseek-pricing-tier/`) whose CLI reuses the panel's *own*
+logic — it extracts and evaluates the `/*CORE-START*/ … /*CORE-END*/` block out of `index.html`, so
+the panel and the agent can never drift apart:
+
+```bash
+node skills/deepseek-pricing-tier/scripts/deepseek_tier.mjs            # now
+node skills/deepseek-pricing-tier/scripts/deepseek_tier.mjs --json     # for agents
+node skills/deepseek-pricing-tier/scripts/deepseek_tier.mjs --days 7   # upcoming switches
+```
+
+Exit code **0** = off-peak (half price), **3** = peak (full price), **2** = error — so
+`node deepseek_tier.mjs --quiet && run_your_batch` defers the job to the cheap window by itself.
+
+The skill's agent-facing half answers "is DeepSeek half price right now, and when does it flip"
+without opening a browser. Install by copying `skills/deepseek-pricing-tier/` into your Hermes
+skills directory, or point `DEEPSEEK_PANEL_HTML` at `index.html`.
+
 ## Everything is traceable
 
 - **Schedule rule & prices** — the footnote on `api-docs.deepseek.com/quick_start/pricing`.
 - **Model ids and versions** — a live call to `GET api.deepseek.com/models`, not a blog post.
 - **Holiday calendar** — the State Council's 2026 notice (国务院办公厅关于 2026 年部分节假日安排的通知).
-- **Logic** — 22 assertions over the 09:00/12:00/14:00/18:00 boundaries, weekends, Spring Festival and National Day, next-switch computation and the halved-price invariant.
+- **Logic** — a shipped test suite (`node --test`): 10 tests / 38 assertions over the
+  09:00/12:00/14:00/18:00 boundaries, weekends, Spring Festival and National Day, next-switch
+  computation, the halved-price invariant, and the CLI's exit codes.
 
 ## Customise it in one minute
 
