@@ -1,0 +1,15 @@
+# OS / 编辑器
+Thumbs.db
+desktop.ini
+.DS_Store
+*.swp
+*~
+
+# 截图 / 临时产物
+*.png
+!docs/*.png
+
+# 本地环境
+.env
+.env.*
+node_modules/

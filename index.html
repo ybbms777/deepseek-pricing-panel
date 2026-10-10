@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DeepSeek API 计费时段面板</title>
+<style>
+  #panel{width:820px;max-width:100%;box-sizing:border-box;font-variant-numeric:tabular-nums;color:inherit}
+  #panel *{box-sizing:border-box}
+  .hd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 10px}
+  .hd h1{font-size:15px;font-weight:600;margin:0;letter-spacing:.3px}
+  .hd .meta{font-size:11px;color:var(--muted-foreground);margin-left:auto;text-align:right;line-height:1.5}
+  .card{border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  /* ---- 状态横幅 ---- */
+  .status{display:flex;align-items:center;gap:16px;border-radius:10px;padding:14px 16px;border:1px solid var(--border)}
+  .status.off{background:rgba(22,163,74,.10);border-color:rgba(22,163,74,.45)}
+  .status.peak{background:rgba(220,38,38,.10);border-color:rgba(220,38,38,.45)}
+  .badge{font-size:19px;font-weight:700;padding:7px 14px;border-radius:8px;color:#fff;white-space:nowrap}
+  .status.off .badge{background:#16a34a}
+  .status.peak .badge{background:#dc2626}
+  .status .sub{font-size:12px;color:var(--muted-foreground);margin-top:4px}
+  .clock{margin-left:auto;text-align:right}
+  .clock .t{font-family:ui-monospace,Consolas,Menlo,monospace;font-size:22px;font-weight:600;letter-spacing:.5px}
+  .clock .d{font-size:11.5px;color:var(--muted-foreground);margin-top:2px}
+  .clock .cd{font-size:11.5px;color:var(--muted-foreground);margin-top:2px}
+  /* ---- 表格 ---- */
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{padding:7px 8px;text-align:right;border-bottom:1px solid var(--border);vertical-align:middle}
+  th{font-weight:500;font-size:11.5px;color:var(--muted-foreground);text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  tr:last-child td{border-bottom:none}
+  td .id{font-weight:600}
+  td .ver{display:block;font-size:11px;color:var(--muted-foreground);margin-top:1px}
+  td.conc,th.conc{text-align:center;font-size:12px}
+  td .now{font-weight:700;padding:1px 5px;border-radius:5px}
+  .off-hi{background:rgba(22,163,74,.16);color:#15803d;outline:1px solid rgba(22,163,74,.5)}
+  .peak-hi{background:rgba(220,38,38,.16);color:#b91c1c;outline:1px solid rgba(220,38,38,.5)}
+  td .old{color:var(--muted-foreground);font-size:11.5px;margin-left:4px}
+  /* ---- 周历 ---- */
+  .wk{display:grid;grid-template-columns:88px 1fr;gap:4px 8px;align-items:center;font-size:11.5px}
+  .wk .day{text-align:right;color:var(--muted-foreground);white-space:nowrap}
+  .wk .day.today{color:inherit;font-weight:700}
+  .track{position:relative;height:16px;border-radius:4px;background:rgba(22,163,74,.35);overflow:hidden;border:1px solid var(--border)}
+  .seg{position:absolute;top:0;bottom:0;background:rgba(220,38,38,.75)}
+  .axis{grid-column:2;position:relative;height:13px;font-size:10px;color:var(--muted-foreground)}
+  .axis span{position:absolute;transform:translateX(-50%)}
+  .axis span:first-child{transform:none}
+  .axis span:last-child{transform:translateX(-100%)}
+  .legend{display:flex;gap:14px;font-size:11px;color:var(--muted-foreground);margin:8px 0 10px;flex-wrap:wrap}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .legend .lo{background:rgba(22,163,74,.5)}
+  .legend .lp{background:rgba(220,38,38,.75)}
+  /* ---- 切换列表 ---- */
+  .sw{font-size:12.5px;line-height:1.9}
+  .sw b{font-weight:600}
+  .sw .to-peak{color:#dc2626}
+  .sw .to-off{color:#16a34a}
+  .foot{font-size:11px;color:var(--muted-foreground);line-height:1.7}
+  .foot code{font-size:11px}
+</style>
+</head>
+<body>
+<div id="panel">
+  <div class="hd">
+    <h1>DeepSeek API 计费时段面板</h1>
+    <div class="meta">
+      高峰 = 北京时间 周一至周五 9:00–12:00、14:00–18:00（不含中国法定节假日）<br>
+      其余全部时段为 <b>空闲（半价）</b>　·　单价来源：api-docs.deepseek.com/quick_start/pricing<br>
+      模型名与版本已用 <code>GET api.deepseek.com/models</code> 核对（2026-10-10）
+    </div>
+  </div>
+
+  <div class="status off" id="status">
+    <div class="badge" id="badge">空闲时段</div>
+    <div>
+      <div style="font-size:13px" id="tierLine">当前按空闲价计费（半价）</div>
+      <div class="sub" id="tierNote"></div>
+    </div>
+    <div class="clock">
+      <div class="t" id="clock">--:--:--</div>
+      <div class="d" id="dateLine"></div>
+      <div class="cd" id="countdown"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="font-size:12px;color:var(--muted-foreground);margin-bottom:6px">
+      单价（元 / 百万 tokens）—— 当前生效的一档已高亮，<span class="old" style="margin:0">灰色</span>为另一档
+    </div>
+    <table id="priceTable">
+      <thead>
+        <tr><th>模型（API 模型名 / 实际版本）</th><th>输入 · 缓存命中</th><th>输入 · 缓存未命中</th><th>输出</th><th class="conc">并发上限</th></tr>
+      </thead>
+      <tbody id="priceBody"></tbody>
+    </table>
+    <div style="font-size:11.5px;color:var(--muted-foreground);margin-top:8px">
+      空闲价 = 高峰价的 50%。计费按<b>请求完成时刻</b>落入哪个时段判定；跨时段的长请求注意时间点。
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="font-size:12px;color:var(--muted-foreground);margin-bottom:8px">未来 7 天时段表（北京时间，红 = 高峰全价，绿 = 空闲半价）</div>
+    <div class="legend">
+      <span><i class="lp"></i>高峰（全价）</span>
+      <span><i class="lo"></i>空闲（半价）</span>
+      <span>列刻度：0 / 6 / 12 / 18 / 24 时</span>
+    </div>
+    <div class="wk" id="week"></div>
+  </div>
+
+  <div class="card">
+    <div style="font-size:12px;color:var(--muted-foreground);margin-bottom:6px">接下来的时段切换</div>
+    <div class="sw" id="switches"></div>
+  </div>
+
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+/*CORE-START*/
+// ---- 纯逻辑：不依赖 DOM，可在 node 中独立测试 ----
+const TZ = 8 * 3600 * 1000; // 北京时间 = UTC+8
+
+function ymd(d){ const p=n=>String(n).padStart(2,'0'); return d.getUTCFullYear()+'-'+p(d.getUTCMonth()+1)+'-'+p(d.getUTCDate()); }
+function range(a,b){ // 'YYYY-MM-DD' 闭区间
+  const out=[], s=new Date(a+'T00:00:00Z'), e=new Date(b+'T00:00:00Z');
+  for(let t=s.getTime(); t<=e.getTime(); t+=86400000) out.push(ymd(new Date(t)));
+  return out;
+}
+// 2026 年国务院办公厅《关于2026年部分节假日安排的通知》：放假日期（不含调休上班日）
+const HOLIDAYS = new Set([
+  ...range('2026-01-01','2026-01-03'), // 元旦
+  ...range('2026-02-15','2026-02-23'), // 春节
+  ...range('2026-04-04','2026-04-06'), // 清明
+  ...range('2026-05-01','2026-05-05'), // 劳动节
+  ...range('2026-06-19','2026-06-21'), // 端午
+  ...range('2026-09-25','2026-09-27'), // 中秋
+  ...range('2026-10-01','2026-10-07')  // 国庆
+]);
+
+function bj(ts){ // 拆出北京时间各字段
+  const d=new Date(ts+TZ);
+  return {y:d.getUTCFullYear(),mo:d.getUTCMonth()+1,d:d.getUTCDate(),h:d.getUTCHours(),
+          mi:d.getUTCMinutes(),s:d.getUTCSeconds(),wd:d.getUTCDay(),key:ymd(d)};
+}
+function isPeakHour(y,mo,d,h){
+  const key=y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+  if(HOLIDAYS.has(key)) return false;                       // 法定节假日 → 空闲
+  const wd=new Date(Date.UTC(y,mo-1,d)).getUTCDay();
+  if(wd===0||wd===6) return false;                          // 周末 → 空闲
+  return (h>=9&&h<12)||(h>=14&&h<18);                       // 工作日高峰两段
+}
+function tierAt(ts){ const p=bj(ts); return isPeakHour(p.y,p.mo,p.d,p.h)?'peak':'off'; }
+function nextSwitch(ts){ // 高峰/空闲边界都落在整点，逐小时向前找即可
+  const base=Math.floor(ts/3600000)*3600000, cur=tierAt(ts);
+  for(let i=1;i<=24*15;i++){ const t=base+i*3600000; if(tierAt(t)!==cur) return t; }
+  return null;
+}
+function daySegments(ts){ // 返回该北京时间日的 [{h0,h1}] 高峰段
+  const p=bj(ts), segs=[]; let open=null;
+  for(let h=0;h<=24;h++){
+    const peak = h<24 ? isPeakHour(p.y,p.mo,p.d,h) : false;
+    if(peak && open===null) open=h;
+    if(!peak && open!==null){ segs.push({h0:open,h1:h}); open=null; }
+  }
+  return segs;
+}
+// 模型：API 模型名 id → 官方“模型版本”字段 ver（已用 GET https://api.deepseek.com/models 核对 id 与 name）
+const PRICES = {
+  'deepseek-flash':  {ver:'DeepSeek-V4.1-Flash',        hit:[0.02,0.04],  miss:[1,2],       out:[4,8],        conc:2500},
+  'deepseek-v4-pro': {ver:'DeepSeek-V4-Pro（0813 版）', hit:[0.15,0.30],  miss:[4.5,9.0],   out:[13.5,27.0],  conc:500}
+};
+const WD=['周日','周一','周二','周三','周四','周五','周六'];
+/*CORE-END*/
+
+// ---- 渲染 ----
+const $=id=>document.getElementById(id);
+const fmt=n=>String(n).padStart(2,'0');
+function mmss(ms){
+  ms=Math.max(0,ms); const s=Math.floor(ms/1000);
+  const d=Math.floor(s/86400), h=Math.floor(s%86400/3600), m=Math.floor(s%3600/60), ss=s%60;
+  return (d?d+'天 ':'')+fmt(h)+':'+fmt(m)+':'+fmt(ss);
+}
+function render(){
+  const now=Date.now(), p=bj(now), cur=tierAt(now), nx=nextSwitch(now);
+  const st=$('status');
+  st.className='status '+cur;
+  $('badge').textContent = cur==='off'?'空闲时段 半价':'高峰时段 全价';
+  $('tierLine').textContent = cur==='off'
+    ? '当前按空闲价计费 —— 单价为高峰的 50%'
+    : '当前按高峰价计费 —— 建议把批处理挪到其余时段';
+  const todayPeak = daySegments(now);
+  $('tierNote').textContent = cur==='off'
+    ? (HOLIDAYS.has(p.key) ? '今天是 2026 年法定节假日，全天按空闲计费'
+       : (p.wd===0||p.wd===6) ? '今天是周六/周日，全天按空闲计费' : '当前处在工作日的高峰段之外')
+    : '今天高峰时段：' + todayPeak.map(s=>fmt(s.h0)+':00–'+fmt(s.h1)+':00').join('、');
+  $('clock').textContent = fmt(p.h)+':'+fmt(p.mi)+':'+fmt(p.s);
+  $('dateLine').textContent = p.key.replace(/-/g,'/') + ' ' + WD[p.wd];
+  if(nx){
+    const to = tierAt(nx)==='peak' ? '高峰（转全价）' : '空闲（转半价）';
+    $('countdown').textContent = '距切换到' + to + '还剩 ' + mmss(nx-now);
+  } else $('countdown').textContent='';
+
+  // 价格表：每格显示当前生效价（高亮）+ 另一档价（灰色）
+  const mk=arr=>'<span class="now '+(cur==='off'?'off-hi':'peak-hi')+'">'+arr[cur==='off'?0:1]+'</span>'
+              + '<span class="old">('+arr[cur==='off'?1:0]+')</span>';
+  $('priceBody').innerHTML = Object.entries(PRICES).map(([m,v])=>
+    '<tr><td><span class="id">'+m+'</span><span class="ver">'+v.ver+'</span></td>'
+    + '<td>'+mk(v.hit)+'</td><td>'+mk(v.miss)+'</td><td>'+mk(v.out)+'</td>'
+    + '<td class="conc">'+v.conc+'</td></tr>'
+  ).join('');
+
+  // 未来 7 天
+  const start=new Date(now+TZ); start.setUTCHours(0,0,0,0);
+  let rows='';
+  for(let i=0;i<7;i++){
+    const dayTs=start.getTime()+i*86400000 - TZ;
+    const dp=bj(dayTs);
+    const segs=daySegments(dayTs);
+    const isToday = dp.key===p.key;
+    const tag = HOLIDAYS.has(dp.key) ? '·假' : (dp.wd===0||dp.wd===6?'·休':'');
+    rows += '<div class="day'+(isToday?' today':'')+'">'+WD[dp.wd]+' '+dp.mo+'/'+dp.d+tag+'</div>'
+      + '<div class="track">'+segs.map(s=>'<div class="seg" style="left:'+(s.h0/24*100)+'%;width:'+((s.h1-s.h0)/24*100)+'%"></div>').join('')+'</div>';
+  }
+  rows += '<div></div><div class="axis">'+[0,6,12,18,24].map(h=>'<span style="left:'+(h/24*100)+'%">'+h+'</span>').join('')+'</div>';
+  $('week').innerHTML=rows;
+
+  // 切换列表
+  let t=now, list=[];
+  for(let k=0;k<4;k++){
+    const n=nextSwitch(t); if(!n) break;
+    const np=bj(n);
+    list.push('<div>'+WD[np.wd]+' '+np.key+' '+fmt(np.h)+':00 → <b class="'+(tierAt(n)==='peak'?'to-peak':'to-off')+'">'+(tierAt(n)==='peak'?'转高峰（全价）':'转空闲（半价）')+'</b></div>');
+    t=n;
+  }
+  $('switches').innerHTML=list.join('');
+
+  const hol=[...HOLIDAYS].sort().filter(k=>k>=p.key);
+  $('foot').innerHTML='<b>模型名</b>：<code>deepseek-flash</code> 即 DeepSeek-V4.1-Flash（<u>不是</u> V4-Flash：旧模型名 <code>deepseek-v4-flash</code>、<code>deepseek-v4-flash-vision-exp</code> 已下线，仍可调用但由 DeepSeek-V4.1-Flash 承接并按 Flash 价计费）；<code>deepseek-v4-pro</code> 即 DeepSeek-V4-Pro（官方“模型版本”写作 DeepSeek-V4-Pro-0813）。'
+    + '<br>高峰判定依据官方定价页脚注：北京时间周一至周五（不含中国法定节假日）9:00–12:00、14:00–18:00 为高峰，其余时段（含周末及法定节假日全天）为空闲半价。'
+    + '法定节假日按 2026 年国务院办公厅通知录入（元旦/春节/清明/劳动节/端午/中秋/国庆）。'
+    + '<br>注意：像 10/10（周六）这类<b>调休上班日</b>，官方规则只按“周一至周五 / 周末”区分，仍算周末 → 空闲半价。'
+    + '<br>剩余 2026 年法定节假日：'+(hol.length?hol.map(k=>{const b=bj(new Date(k+'T00:00:00+08:00').getTime());return b.mo+'/'+b.d;}).join('、'):'无')+'。2027 年放假安排公布后需补录。';
+}
+render();
+setInterval(render,1000);
+</script>
+</body>
+</html>
