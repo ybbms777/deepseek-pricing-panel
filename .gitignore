@@ -5,9 +5,10 @@ desktop.ini
 *.swp
 *~
 
-# 截图 / 临时产物
+# 截图 / 临时产物（默认忽略 PNG，但图标与文档截图要提交）
 *.png
 !docs/*.png
+!desktop/src-tauri/icons/**/*.png
 
 # 本地环境
 .env

@@ -24,6 +24,17 @@ cd deepseek-pricing-panel
 
 Open `index.html` in any browser. On Windows you can double-click `打开面板.bat` instead.
 
+### Desktop app (Windows, Tauri)
+
+`desktop/` wraps the same panel in a Tauri shell: a native window plus a tray icon (show/hide, always-on-top toggle, quit), and closing the window hides it to the tray instead of exiting. It serves the very same HTML — no logic is rewritten.
+
+```bash
+node desktop/tools/sync-panel.mjs        # copy the current panel into the shell
+cd desktop && npx @tauri-apps/cli build  # → src-tauri/target/release/bundle/nsis/
+```
+
+CI checks that the embedded copy matches `index.html`, so the shell can never ship a stale panel.
+
 Run the tests (Node 20+, no third-party packages):
 
 ```bash

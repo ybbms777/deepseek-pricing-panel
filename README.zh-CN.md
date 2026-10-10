@@ -24,6 +24,17 @@ cd deepseek-pricing-panel
 
 浏览器打开 `index.html`。Windows 上也可以双击 `打开面板.bat`。
 
+### 桌面版（Windows / Tauri）
+
+`desktop/` 把同一份面板包成 Tauri 壳：原生窗口 + 系统托盘（显示/隐藏、置顶开关、退出），关窗收进托盘而不退出。壳里跑的就是这份 HTML，逻辑没有重写。
+
+```bash
+node desktop/tools/sync-panel.mjs        # 把当前面板同步进壳
+cd desktop && npx @tauri-apps/cli build  # → src-tauri/target/release/bundle/nsis/
+```
+
+CI 会校验壳内嵌的副本与 `index.html` 一致，壳不可能带着旧面板发出去。
+
 跑测试（需要 Node 20+，无第三方依赖）：
 
 ```bash

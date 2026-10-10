@@ -1,0 +1,3 @@
+index.html 34fd6be4a06eb4c516012281f6a398891d396c54fafc5a72200081af613d73fa
+source ../../index.html
+note 行尾归一化（CRLF→LF）后再算 sha，保证跨平台一致

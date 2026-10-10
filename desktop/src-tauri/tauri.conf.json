@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "DeepSeek Pricing Panel",
+  "version": "0.1.0",
+  "identifier": "com.ybbms777.deepseek-pricing-panel",
+  "build": {
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "DeepSeek 计费时段",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1180,
+        "minHeight": 700,
+        "center": true,
+        "resizable": true,
+        "decorations": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.ico"],
+    "shortDescription": "DeepSeek API peak/off-peak pricing panel",
+    "longDescription": "Shows whether the DeepSeek API is billing at peak (full price) or off-peak (half price) right now, the next switch time, the 14-day schedule with Chinese public holidays, and the live per-model prices. Local arithmetic only: no network, no API key."
+  }
+}

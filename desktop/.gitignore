@@ -1,0 +1,7 @@
+# Rust / Tauri
+target/
+src-tauri/target/
+gen/
+
+# 注意：dist/ 故意不忽略 —— 里面是 sync-panel.mjs 从仓库根 index.html 生成的
+# index.html 与 panel.sha256，提交进仓库后 CI 才能用 --check 守住「内嵌面板 == 当前面板」。
