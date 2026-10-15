@@ -13,7 +13,7 @@ No build, no dependencies, no network. Double-click the file.
 > Peak = Beijing time (UTC+8) Monday–Friday 09:00–12:00 and 14:00–18:00, excluding Chinese public holidays.
 > Every other instant — weekday nights, the 12:00–14:00 lunch break, all weekend, all holidays — bills at exactly 50% of the peak rate.
 
-Same tokens, 2× the price, decided only by when the request finishes.
+Same model and tokens, 2× the price between tiers. The official page does not specify how a request spanning a tier boundary is assigned; use the actual bill as the authority.
 
 ## Run it
 
@@ -33,18 +33,18 @@ node desktop/tools/sync-panel.mjs        # copy the current panel into the shell
 cd desktop && npx @tauri-apps/cli build  # → src-tauri/target/release/bundle/nsis/
 ```
 
-CI checks that the embedded copy matches `index.html`, so the shell can never ship a stale panel.
+The local Rust build checks that the embedded copy matches `index.html` and stops on drift. Run the sync command before building. This also protects direct Cargo builds; CI has a separate drift check.
 
 Run the tests (Node 20+, no third-party packages):
 
 ```bash
-node --test        # 10 tests / 38 assertions
+node --test        # logic, CLI, installation and render regressions
 ```
 
 ## What the page shows
 
-It is a desktop panel, not a scrolling web page: three panes in a viewport-height grid, no page
-scroll, dark/light toggle, keyboard control.
+It uses three panes in a viewport-height grid with dark/light toggle and keyboard control.
+Below 1180px, scroll horizontally to reach all panes. Arrow keys in inputs keep their native behavior.
 
 | Pane | What |
 |---|---|
@@ -58,10 +58,10 @@ scroll, dark/light toggle, keyboard control.
 
 ## Where the numbers come from
 
-- Schedule rule and prices: the footnote on `api-docs.deepseek.com/quick_start/pricing`
+- Schedule rule and prices: [official pricing page](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/), checked 2026-10-15
 - Model ids and versions: a live `GET https://api.deepseek.com/models`
 - Holidays: State Council notice for 2026, 33 days
-- Logic: `node --test` runs 10 tests / 38 assertions covering the 09:00 / 12:00 / 14:00 / 18:00 boundaries, weekends, Spring Festival and National Day, the next-switch calculation, off-peak = peak ÷ 2, and the CLI's exit codes. CI runs it on Ubuntu and Windows with Node 20 and 22.
+- Logic: `node --test` covers boundaries, holidays, next switches, half-price rates, CLI validation, rolling windows, installation from an unrelated directory, calendar coverage, and fixed-clock rendering. Existing CI uses Ubuntu and Windows with Node 20 and 22; local checks do not require CI.
 
 ## Model names
 
@@ -95,9 +95,19 @@ node skills/deepseek-pricing-tier/scripts/deepseek_tier.mjs --json     # for an 
 node skills/deepseek-pricing-tier/scripts/deepseek_tier.mjs --days 7   # upcoming switches
 ```
 
-Exit code 0 = off-peak, 3 = peak, 2 = error, so `node deepseek_tier.mjs --quiet && run_your_batch` defers the batch into the cheap window on its own.
+Exit code 0 = off-peak, 3 = peak, 2 = error or incomplete holiday coverage. `node deepseek_tier.mjs --quiet && run_your_batch` runs the batch only if this check returns 0; it skips it during peak time. It does not wait, retry or schedule a later run. Warnings still go to stderr with `--quiet`.
 
-To install the skill, copy `skills/deepseek-pricing-tier/` into your Hermes skills directory, or point `DEEPSEEK_PANEL_HTML` at `index.html`.
+`--days N` accepts integers 0–366 and lists switches in the rolling interval `[at, at + N×24h)`: a switch exactly at the start is included, the end is excluded. Zero omits the list. `--at` requires an ISO date-time with seconds and an explicit `Z` or UTC offset. The webpage's 7-day summary instead covers seven Beijing calendar days starting at today's midnight.
+
+Install the skill **with its HTML dependency** into a new destination (the installer refuses to overwrite an existing directory):
+
+```bash
+node tools/install-skill.mjs /path/to/hermes/skills/deepseek-pricing-tier
+```
+
+You can invoke the installer by its absolute path from any working directory. The installed `scripts/deepseek_tier.mjs` then runs from any working directory too. Alternatively, copy the skill directory and the repository's `index.html` into the skill directory, or explicitly set `--panel` / `DEEPSEEK_PANEL_HTML` to the repository HTML. A missing explicitly configured path is an error, with no silent fallback.
+
+JSON includes `data_metadata`, `current_calendar_covered`, `calendar_coverage` and `warnings`. Coverage includes all dates consulted for the next switch and the requested future window; a cross-year gap also exits 2. Unmaintained dates remain estimates based on the weekly rule, not confirmed holiday-aware results. The page warns for gaps anywhere in its 14-day timetable, including future years.
 
 ## Change it
 
@@ -112,7 +122,7 @@ nextSwitch(ts)    // timestamp of the next tier change
 daySegments(ts)   // peak ranges of a given Beijing-time day
 ```
 
-When next year's holiday notice is published, append the dates to `HOLIDAYS`.
+When next year's holiday notice is published, verify and append the dates to `HOLIDAYS`, then update `DATA_METADATA.holiday_years` and its source. Recheck prices before updating `pricing_checked_on`.
 
 ## Two caveats
 

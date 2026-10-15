@@ -59,12 +59,22 @@ JSON.
 | Flag | Effect |
 |---|---|
 | `--json` | Machine-readable output (use this when the agent reads it) |
-| `--at <ISO>` | Evaluate a specific instant, e.g. `2026-10-12T09:30:00+08:00` |
-| `--days N` | Also list the next N days of switch times |
-| `--quiet` | Print nothing; communicate through the exit code |
+| `--at <ISO>` | ISO date-time with seconds and Z or UTC offset, e.g. `2026-10-12T09:30:00+08:00` |
+| `--days N` | Integer 0–366; rolling `[at, at + N×24h)`, includes a switch at the start, excludes the end; 0 omits the list |
+| `--quiet` | No result on stdout; warnings/errors still go to stderr |
 | `--panel <path>` | Point at a specific `index.html` |
 
-Exit codes: **0** = off-peak (half price) · **3** = peak (full price) · **2** = error.
+Exit codes: **0** = off-peak (half price) · **3** = peak (full price) · **2** = error or incomplete holiday coverage.
+
+Install with `node /absolute/path/to/repo/tools/install-skill.mjs <new-skill-directory>`.
+This copies both the skill and `index.html`; copying only the skill folder is insufficient.
+The destination must not already exist. Installed scripts run from any cwd. Explicit `--panel`
+or `DEEPSEEK_PANEL_HTML` paths are authoritative and error if missing.
+
+Read `data_metadata`, `calendar_coverage`, `current_calendar_covered` and `warnings` before
+making recommendations. Unmaintained years and future cross-year windows are estimates.
+`--quiet && run_batch` skips peak/unknown results; it never waits or automatically reschedules.
+The official pricing page does not specify billing assignment for requests spanning a boundary.
 
 ## Procedure
 
@@ -79,7 +89,8 @@ Exit codes: **0** = off-peak (half price) · **3** = peak (full price) · **2** 
 3. If the user wants to see it, open `index.html` — or the live panel at
    `https://ybbms777.github.io/deepseek-pricing-panel/` — rather than describing the panel.
    *Done when*: the file/page is open, not summarised.
-4. When a new year's holiday calendar is published, add the dates to `HOLIDAYS` in `index.html`
+4. When a new year's holiday calendar is published, add verified dates to `HOLIDAYS` and update
+   `DATA_METADATA.holiday_years` and its source in `index.html`
    and re-run the CLI for that year's dates to confirm the flip.
    *Done when*: a peak/off-peak query inside the new holiday window returns `off` with
    `reason: public holiday`.

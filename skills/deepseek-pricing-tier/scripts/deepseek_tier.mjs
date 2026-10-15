@@ -23,9 +23,14 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 function locatePanel(explicit) {
+  const requested = explicit ?? process.env.DEEPSEEK_PANEL_HTML;
+  if (requested !== undefined) {
+    try {
+      if (fs.statSync(requested).isFile()) return path.resolve(requested);
+    } catch { /* report the requested path instead of silently falling back */ }
+    throw new Error('requested panel is not a readable file: ' + requested);
+  }
   const tries = [
-    explicit,
-    process.env.DEEPSEEK_PANEL_HTML,
     path.join(HERE, '..', '..', '..', 'index.html'), // repo layout: skills/<name>/scripts/
     path.join(HERE, '..', '..', 'index.html'),       // skill installed one level shallower
     path.join(HERE, '..', 'index.html'),
@@ -41,21 +46,30 @@ function locatePanel(explicit) {
 function loadCore(panelPath) {
   const html = fs.readFileSync(panelPath, 'utf8');
   const m = html.split('/*CORE-START*/')[1];
-  if (!m) throw new Error('CORE block not found in ' + panelPath);
+  if (!m || !m.includes('/*CORE-END*/')) throw new Error('complete CORE block not found in ' + panelPath);
   const core = m.split('/*CORE-END*/')[0];
   // Evaluate the panel's own logic and hand back the symbols we need.
-  return new Function(core + '\nreturn {tierAt, nextSwitch, daySegments, bj, HOLIDAYS, PRICES};')();
+  return new Function(core + '\nreturn {tierAt, nextSwitch, daySegments, bj, PRICES, tierReason, DATA_METADATA, calendarCoverage, coverageWarnings};')();
 }
 
 function args(argv) {
   const o = { days: 0, json: false, quiet: false, at: null, panel: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
+    const value = () => {
+      const v = argv[++i];
+      if (!v || v.startsWith('--') || v === '-h') throw new Error(a + ' requires a value');
+      return v;
+    };
     if (a === '--json') o.json = true;
     else if (a === '--quiet') o.quiet = true;
-    else if (a === '--at') o.at = argv[++i];
-    else if (a === '--panel') o.panel = argv[++i];
-    else if (a === '--days') o.days = Number(argv[++i] || 0);
+    else if (a === '--at') o.at = value();
+    else if (a === '--panel') o.panel = value();
+    else if (a === '--days') {
+      const v = value();
+      if (!/^\d+$/.test(v) || Number(v) > 366) throw new Error('--days must be an integer from 0 to 366');
+      o.days = Number(v);
+    }
     else if (a === '-h' || a === '--help') o.help = true;
     else throw new Error('unknown argument: ' + a);
   }
@@ -66,11 +80,25 @@ const HELP = `DeepSeek API peak / off-peak tier
 
   node deepseek_tier.mjs [--json] [--quiet] [--at <ISO>] [--days N] [--panel <index.html>]
 
-  --at     evaluate a specific instant (default: now)
-  --days   also list switches over the next N days
-  --quiet  print nothing, only set the exit code
-  exit 0 = off-peak (half price) · 3 = peak (full price) · 2 = error
+  --at     ISO instant with Z or UTC offset (default: now)
+  --days   integer 0..366; switches in [at, at + N*24h), including a switch at at
+  --quiet  print no result; errors and coverage warnings still go to stderr
+  exit 0 = off-peak · 3 = peak · 2 = error or incomplete holiday coverage
 `;
+
+function parseInstant(value) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!m) throw new Error('--at requires an ISO date-time with seconds and Z or UTC offset');
+  const [, year, month, day, hour, minute, second, zone] = m;
+  const date = new Date(year + '-' + month + '-' + day + 'T00:00:00Z');
+  const ts = Date.parse(value);
+  if (!Number.isFinite(ts) || date.toISOString().slice(0, 10) !== `${year}-${month}-${day}` ||
+      +hour > 23 || +minute > 59 || +second > 59 ||
+      (zone !== 'Z' && (+zone.slice(1, 3) > 23 || +zone.slice(4) > 59))) {
+    throw new Error('--at is not a valid date: ' + value);
+  }
+  return ts;
+}
 
 function pad(n) { return String(n).padStart(2, '0'); }
 function bjStamp(p) { return `${p.key} ${pad(p.h)}:${pad(p.mi)}:${pad(p.s)}`; }
@@ -86,18 +114,19 @@ function main() {
 
   const panel = locatePanel(o.panel);
   if (!panel) throw new Error('index.html not found — pass --panel <path> or set DEEPSEEK_PANEL_HTML');
-  const { tierAt, nextSwitch, daySegments, bj, HOLIDAYS, PRICES } = loadCore(panel);
+  const { tierAt, nextSwitch, daySegments, bj, PRICES, tierReason, DATA_METADATA, calendarCoverage, coverageWarnings } = loadCore(panel);
 
-  const at = o.at ? new Date(o.at).getTime() : Date.now();
-  if (Number.isNaN(at)) throw new Error('--at is not a valid date: ' + o.at);
+  const at = o.at ? parseInstant(o.at) : Date.now();
 
   const tier = tierAt(at);
   const nx = nextSwitch(at);
   const p = bj(at);
   const segs = daySegments(at);
-  const reason = HOLIDAYS.has(p.key) ? 'public holiday'
-    : (p.wd === 0 || p.wd === 6) ? 'weekend'
-    : segs.length ? 'outside the weekday peak windows' : 'weekday, outside peak';
+  const reason = tierReason(at);
+  const horizon = at + o.days * 86400000;
+  // Include every date consulted for the next switch as well as the requested forecast.
+  const coverageEnd = Math.max(at + 1, horizon, nx ? nx + 1 : at + 15 * 86400000);
+  const warnings = coverageWarnings(at, coverageEnd);
 
   const out = {
     evaluated_at_beijing: bjStamp(p),
@@ -105,6 +134,10 @@ function main() {
     tier,                                  // 'off' (half price) | 'peak' (full price)
     off_peak: tier === 'off',
     reason,
+    data_metadata: DATA_METADATA,
+    calendar_coverage: calendarCoverage(at, coverageEnd),
+    current_calendar_covered: calendarCoverage(at).complete,
+    warnings,
     today_peak_windows: segs.map(s => `${pad(s.h0)}:00-${pad(s.h1)}:00`),
     next_switch_beijing: nx ? bjStamp(bj(nx)) : null,
     seconds_until_switch: nx ? Math.floor((nx - at) / 1000) : null,
@@ -121,25 +154,29 @@ function main() {
 
   if (o.days > 0) {
     const sw = [];
-    let t = at;
-    for (let i = 0; i < 40 && sw.length < o.days * 3; i++) {
-      const n = nextSwitch(t);
-      if (!n) break;
+    let n = tierAt(at - 1) !== tier ? at : nextSwitch(at);
+    while (n !== null && n < horizon) {
       sw.push({ at_beijing: bjStamp(bj(n)), to: tierAt(n) === 'peak' ? 'peak' : 'off-peak' });
-      t = n;
+      n = nextSwitch(n);
     }
     out.upcoming_switches = sw;
+    out.switch_window = { start_beijing: bjStamp(bj(at)), end_beijing_exclusive: bjStamp(bj(horizon)), days: o.days };
   }
 
-  if (o.json) {
+  for (const warning of warnings) process.stderr.write('warning: ' + warning + '\n');
+  if (o.quiet) {
+    // Incomplete coverage must not authorize a batch through `&&`.
+  } else if (o.json) {
     process.stdout.write(JSON.stringify(out, null, 2) + '\n');
   } else if (!o.quiet) {
     const label = out.off_peak ? 'OFF-PEAK — half price' : 'PEAK — full price';
     const lines = [
-      `${label}`,
+      `${label}${calendarCoverage(at).complete ? '' : ' (estimate; holidays not maintained)'}`,
       `  now (Beijing)   ${out.evaluated_at_beijing} (${out.weekday}) — ${out.reason}`,
       `  today's peak    ${out.today_peak_windows.length ? out.today_peak_windows.join(', ') + ' (Beijing)' : 'none'}`,
       `  next switch     ${out.next_switch_beijing} → ${out.next_switch_to} (in ${human(nx - at)})`,
+      `  pricing checked ${DATA_METADATA.pricing_checked_on} · ${DATA_METADATA.pricing_source}`,
+      `  holiday years   ${DATA_METADATA.holiday_years.join(', ')}`,
     ];
     for (const [m, v] of Object.entries(out.prices_rmb_per_1m_tokens)) {
       lines.push(`  ${m.padEnd(16)} in ${v.input_cache_miss} / out ${v.output} RMB per 1M  (${v.model_version})`);
@@ -150,7 +187,7 @@ function main() {
     }
     process.stdout.write(lines.join('\n') + '\n');
   }
-  return tier === 'off' ? 0 : 3;
+  return warnings.length ? 2 : tier === 'off' ? 0 : 3;
 }
 
 try {
