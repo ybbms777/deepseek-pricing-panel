@@ -42,8 +42,8 @@ Tauri CLI2.12.2和平台包安装在项目`desktop/node_modules`，没有全局�
 
 ## 远程交付边界
 
-只同步既有公开仓库修复分支并创建中文草稿PR；不合并、不部署、不公开发布安装包。
+修复分支已同步到既有公开仓库，已创建[中文草稿PR #1](https://github.com/ybbms777/deepseek-pricing-panel/pull/1)。保持草稿，不合并、不部署、不公开发布安装包。
 
 现有源码测试工作流监听main的push、pull_request及手动workflow_dispatch。提交使用`[skip ci]`以跳过push/PR自动运行；该标记不覆盖手动事件、pull_request_target或后续无标记提交，必需检查也可能保持Pending。依据：[GitHub跳过工作流说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs)。
 
-仓库另有GitHub Pages动态工作流，已只读核对发布源为main根目录。本次不更改main，不修改Pages或Actions设置，不手动触发工作流。远程交付后核对修复提交及PR没有产生Actions运行。
+仓库另有GitHub Pages动态工作流，已只读核对发布源为main根目录。本次不更改main，不修改Pages或Actions设置，不手动触发工作流。首个修复提交的Actions查询结果为0；交接收尾提交也使用`[skip ci]`，最终核查记录保存在本地交付证据中。
