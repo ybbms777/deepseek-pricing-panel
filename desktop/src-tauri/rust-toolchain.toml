@@ -1,0 +1,7 @@
+# 把构建环境钉成代码里的事实，而不是文档里的一句话。
+# 1.98.1 是 HANDOFF 中声称使用的版本；维护者已于 2026-10-16 在本机补装并复跑通过。
+# rustup 会自动安装缺失的工具链；CI 的 dtolnay/rust-toolchain 也会读取本文件。
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt"]
+profile = "minimal"

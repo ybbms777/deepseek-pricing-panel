@@ -1,0 +1,25 @@
+name: upstream drift
+
+# 面板的价格、时段规则与节假日数据都是抄官方来的，官方一改就会静默过期。
+# 每周核对一次官方定价页；当年节假日未录入也会在这里报警（2027 通知发布后需补录）。
+on:
+  schedule:
+    - cron: '0 1 * * 1'   # 每周一 01:00 UTC = 北京时间 09:00
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'tools/check-upstream.mjs'
+      - '.github/workflows/upstream-drift.yml'
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 官方定价页 / 节假日覆盖 漂移核对
+        run: node tools/check-upstream.mjs

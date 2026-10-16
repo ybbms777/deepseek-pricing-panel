@@ -1,0 +1,96 @@
+name: desktop
+
+# 桌面壳（Tauri）的守卫与打包。
+#   - 每次推 main / PR：在干净的 windows runner 上编译一遍，证明壳能被别人编出来，
+#     并跑通 build.rs 的「内嵌面板 == 根 index.html」检查。
+#   - 打 v* 标签：构建 NSIS 安装包，把安装包与 SHA256 附到该标签的 Release。
+# 这样做的好处：发布物一定来自 CI 而不是某台机器的本地构建，谁都能复现。
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  shell:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 内嵌面板必须与根 index.html 一致
+        run: node desktop/tools/sync-panel.mjs --check
+
+      - name: 安装 Rust（版本以 desktop/src-tauri/rust-toolchain.toml 为准）
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.98.1'
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'desktop/src-tauri -> target'
+
+      - name: 编译桌面壳（build.rs 会校验内嵌面板，不一致直接失败）
+        working-directory: desktop/src-tauri
+        run: cargo build --locked
+
+  bundle:
+    needs: shell
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 内嵌面板必须与根 index.html 一致
+        run: node desktop/tools/sync-panel.mjs --check
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.98.1'
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'desktop/src-tauri -> target'
+
+      - name: 构建 NSIS 安装包
+        working-directory: desktop
+        run: npx --yes @tauri-apps/cli build
+
+      - name: 生成校验和
+        shell: bash
+        run: |
+          cd "desktop/src-tauri/target/release/bundle/nsis"
+          ls -l
+          sha256sum *.exe | tee SHA256SUMS.txt
+
+      - name: 把安装包附到该标签的 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
+            desktop/src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
+          body: |
+            Windows 桌面版（原生窗口 + 系统托盘）。壳里跑的就是仓库里的 `index.html`，逻辑没有重写。
+
+            **构建来源**：本 Release 的安装包由 GitHub Actions 在 `windows-latest` 上、用 `desktop/src-tauri/rust-toolchain.toml` 钉住的 Rust 版本构建，可复现。
+
+            **已验证**：面板与 CLI 的逻辑测试（`node --test`）、内嵌面板一致性检查、Rust 守卫测试（3/3）；安装包内含应用可启动并渲染最新面板。
+
+            **未验证 / 已知限制**：
+            - 安装包**未签名**，Windows SmartScreen 会提示；请不要在重要机器上直接双击运行。
+            - 需要目标电脑已有 WebView2 运行时（Win10/11 自带；Win7/8 需自行安装）。
+            - 托盘显示/隐藏、关窗恢复、置顶开关、托盘退出，以及安装/卸载与残留核查**尚未人工验收**。
+            - 未做自动更新。
+
+            面板本身无需安装：直接打开仓库里的 `index.html` 或线上版即可。
