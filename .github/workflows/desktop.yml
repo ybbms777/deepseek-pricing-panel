@@ -67,18 +67,22 @@ jobs:
         working-directory: desktop
         run: npx --yes @tauri-apps/cli build
 
-      - name: 生成校验和
+      - name: 规范产物名并生成校验和
         shell: bash
+        # GitHub 会把资产名里的空格换成点，那样 SHA256SUMS.txt 里的名字就对不上、
+        # `sha256sum -c` 会失败。先复制成无空格的名字再算校验和，两边就一致。
         run: |
           cd "desktop/src-tauri/target/release/bundle/nsis"
           ls -l
-          sha256sum *.exe | tee SHA256SUMS.txt
+          version="${GITHUB_REF_NAME#v}"
+          cp *.exe "deepseek-pricing-panel_${version}_x64-setup.exe"
+          sha256sum "deepseek-pricing-panel_${version}_x64-setup.exe" | tee SHA256SUMS.txt
 
       - name: 把安装包附到该标签的 Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            desktop/src-tauri/target/release/bundle/nsis/*.exe
+            desktop/src-tauri/target/release/bundle/nsis/deepseek-pricing-panel_*_x64-setup.exe
             desktop/src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
           body: |
             Windows 桌面版（原生窗口 + 系统托盘）。壳里跑的就是仓库里的 `index.html`，逻辑没有重写。
