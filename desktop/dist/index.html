@@ -26,7 +26,7 @@
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
   body{background:var(--bg);color:var(--ink);font:13px/1.5 var(--sans);
-       font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;overflow:hidden;
+       font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;overflow:auto;
        min-width:1180px}   /* 这是 PC 面板：窄于 1180 横向滚动，不做移动端折叠 */
   .k{font-size:10.5px;line-height:1.4;letter-spacing:.13em;text-transform:uppercase;color:var(--dim)}
   .app{height:100vh;display:grid;grid-template-rows:54px 1fr 30px;overflow:hidden}
@@ -197,6 +197,7 @@
   <div class="work">
     <!-- 左栏 -->
     <aside class="rail">
+      <section class="card" id="coverageWarning" role="status" hidden></section>
       <section class="card">
         <span class="k">当前档位</span>
         <div class="tier"><span class="w" id="word">—</span><span class="m" id="mult">—</span></div>
@@ -351,6 +352,32 @@ const PRICES = {
   'deepseek-v4-pro': {ver:'DeepSeek-V4-Pro（0813 版）', hit:[0.15,0.30],  miss:[4.5,9.0],   out:[13.5,27.0],  conc:500}
 };
 const WD=['周日','周一','周二','周三','周四','周五','周六'];
+const DATA_METADATA = {
+  pricing_checked_on: '2026-10-15',
+  pricing_source: 'https://api-docs.deepseek.com/zh-cn/quick_start/pricing/',
+  holiday_years: [2026],
+  holiday_source: '国务院办公厅《关于2026年部分节假日安排的通知》',
+  model_mapping_checked_on: '2026-10-10'
+};
+// Coverage is measured over a half-open time interval [start, end).
+function calendarCoverage(start, end = start + 1) {
+  const missing_years = [];
+  for (let y = bj(start).y; y <= bj(Math.max(start, end - 1)).y; y++) {
+    if (!DATA_METADATA.holiday_years.includes(y)) missing_years.push(y);
+  }
+  return { complete: missing_years.length === 0, missing_years };
+}
+function coverageWarnings(start, end) {
+  const { missing_years } = calendarCoverage(start, end);
+  return missing_years.length
+    ? ['节假日数据未覆盖 ' + missing_years.join('、') + ' 年；该年份的时段、切换和汇总仅按周规则估算，需核对官方放假安排。'] : [];
+}
+function tierReason(ts) {
+  const p = bj(ts);
+  return HOLIDAYS.has(p.key) ? 'public holiday'
+    : (p.wd === 0 || p.wd === 6) ? 'weekend'
+    : tierAt(ts) === 'peak' ? 'inside the weekday peak windows' : 'outside the weekday peak windows';
+}
 /*CORE-END*/
 const P2 = n => String(n).padStart(2,'0')
 const HH = n => P2(n) + ':00'
@@ -404,11 +431,18 @@ function render () {
   $('word').textContent = off ? '空闲 · 半价' : '高峰 · 全价'
   $('word').className = 'w ' + cur
   $('mult').textContent = off ? '×0.5' : '×1.0'
-  $('reason').innerHTML = hol ? '中国法定节假日，<em>全天按空闲价计费</em>'
-    : wk ? '周末，<em>全天按空闲价计费</em>'
-    : segs.length ? '工作日，<em>当前处在两段高峰之外</em>' : '工作日，<em>今天没有高峰时段</em>'
+  $('reason').textContent = {
+    'public holiday': '中国法定节假日，全天按空闲价计费',
+    'weekend': '周末，全天按空闲价计费',
+    'inside the weekday peak windows': '工作日，当前处在高峰时段',
+    'outside the weekday peak windows': '工作日，当前处在两段高峰之外'
+  }[tierReason(now)]
+  const warning = coverageWarnings(now, new Date(keys.at(-1).key + 'T00:00:00+08:00').getTime() + 86400000).join(' ')
+  $('coverageWarning').textContent = warning
+  $('coverageWarning').hidden = !warning
+  if (!calendarCoverage(now).complete) $('word').textContent += '（估算）'
   $('pill').className = 'pill' + (off ? '' : ' peak')
-  $('pillWord').textContent = off ? '空闲 · 半价' : '高峰 · 全价'
+  $('pillWord').textContent = (off ? '空闲 · 半价' : '高峰 · 全价') + (calendarCoverage(now).complete ? '' : '（估算）')
   $('pillCd').textContent = nx ? hms(nx - now) : '—'
   $('countdown').textContent = nx ? hms(nx - now) : '—'
   $('cdLabel').textContent = (nx && tierAt(nx) === 'peak') ? '距转为全价' : '距转为半价'
@@ -464,7 +498,8 @@ function render () {
     '<span>高峰</span> ' + (ssegs.length ? ssegs.map(s => HH(s.h0) + '–' + HH(s.h1)).join(' · ') : '无，全天半价') + '<br>' +
     '<span>高峰时长</span> ' + hours + ' 小时　<span>空闲</span> ' + (24 - hours) + ' 小时<br>' +
     '<span>计费档位</span> ' + (sHol || sWk ? '全天按空闲价' : '09–12 / 14–18 按高峰价') + '<br>' +
-    '<span>换算</span> 若全部避开高峰，该日 token 成本为原价 ' + ((24 - hours) / 24 * 100).toFixed(0) + '% 以下'
+    '<span>提示</span> 同模型、同量 token 从高峰全移至空闲，费用减半；时长占比不代表费用节省。' +
+    (!calendarCoverage(new Date(sel + 'T00:00:00+08:00').getTime()).complete ? '<br>该日节假日数据未维护，以上为周规则估算。' : '')
 
   // 逐小时计费倍率（条形）
   const sIsPeak = h => ssegs.some(s => h >= s.h0 && h < s.h1)
@@ -500,7 +535,7 @@ function render () {
 
   // 本周概览
   let peakH = 0
-  for (const k of keys) {
+  for (const k of keys.slice(0, 7)) {
     const ts = new Date(k.key + 'T00:00:00+08:00').getTime()
     peakH += daySegments(ts).reduce((a, s) => a + (s.h1 - s.h0), 0)
   }
@@ -508,7 +543,7 @@ function render () {
   $('weekSummary').innerHTML =
     '<span>高峰合计</span> ' + peakH + ' 小时　<span>空闲合计</span> ' + offH + ' 小时<br>' +
     '<span>空闲占比</span> ' + (offH/(24*7)*100).toFixed(0) + '%　<span>高峰占比</span> ' + (peakH/(24*7)*100).toFixed(0) + '%<br>' +
-    '<span>说明</span> 可延后的批处理全放到空闲时段，这 7 天的成本上限为高峰价的 ' + (offH/(24*7)*100).toFixed(0) + '%'
+    '<span>说明</span> 从今天北京时间零点起计 7 个自然日。以上为时长占比；同模型、同量 token 从高峰全移至空闲，费用节省 50%。'
 
   // 单价（转置：行 = 指标，列 = 模型；窄栏下不再拥挤）
   const idx = off ? 0 : 1
@@ -520,10 +555,12 @@ function render () {
   $('prices').innerHTML =
     prow('缓存命中', v => v.hit) + prow('缓存未命中', v => v.miss) + prow('输出', v => v.out) +
     '<tr><td class="metric">并发上限</td>' + cols.map(([, v]) => '<td class="num">' + v.conc + '</td>').join('') + '</tr>'
-  $('priceNote').innerHTML = '空闲价 = 高峰价 × 50%，按请求<b>完成时刻</b>判定。<br>' +
-    '模型名与版本经 GET api.deepseek.com/models 核对。'
-  $('srcNote').innerHTML = '规则与单价：api-docs.deepseek.com/quick_start/pricing<br>' +
-    '节假日：国务院办公厅 2026 年放假安排（33 天）<br>' +
+  $('priceNote').innerHTML = '空闲价 = 高峰价 × 50%。官方定价页未说明跨时段请求如何归档，以实际账单为准。<br>' +
+    '价格与规则核对日期：' + DATA_METADATA.pricing_checked_on + '。'
+  $('srcNote').innerHTML = '规则与单价：<a href="' + DATA_METADATA.pricing_source + '">DeepSeek 官方定价页</a><br>' +
+    '价格核对：' + DATA_METADATA.pricing_checked_on + '<br>' +
+    '节假日来源：' + DATA_METADATA.holiday_source + '（33 天）<br>' +
+    '节假日覆盖年份：' + DATA_METADATA.holiday_years.join('、') + '；其他年份仅为估算。<br>' +
     '调休上班的周六按官方口径算周末（空闲半价）。'
   $('barLeft').textContent = '高峰 周一至周五 09:00–12:00、14:00–18:00（北京时间，不含法定节假日）· 空闲价 = 高峰价 × 50%'
   $('barRight').textContent = '模型名与版本：GET api.deepseek.com/models（2026-10-10 核对）· 面板为本地计算，不联网'
@@ -531,6 +568,8 @@ function render () {
 
 // 交互
 addEventListener('keydown', e => {
+  if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey ||
+      e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return
   const keys = weekKeys(Date.now()), i = keys.findIndex(k => k.key === sel)
   if (e.key === 'ArrowDown') { sel = keys[Math.min(keys.length - 1, i + 1)].key; render(); e.preventDefault() }
   else if (e.key === 'ArrowUp') { sel = keys[Math.max(0, i - 1)].key; render(); e.preventDefault() }
@@ -545,7 +584,8 @@ $('btnCopy').onclick = async () => {
   const np = nx ? bj(nx) : null
   const txt = 'DeepSeek API 计费时段：' + p.key + ' ' + P2(p.h) + ':' + P2(p.mi) + ' 北京时间，当前' +
     (cur === 'off' ? '空闲（半价）' : '高峰（全价）') + '；下一次切换 ' +
-    (np ? np.mo + '/' + np.d + ' ' + HH(np.h) + ' 转' + (tierAt(nx) === 'peak' ? '全价' : '半价') : '—') + '。'
+    (np ? np.mo + '/' + np.d + ' ' + HH(np.h) + ' 转' + (tierAt(nx) === 'peak' ? '全价' : '半价') : '—') + '。' +
+    coverageWarnings(now, nx ? nx + 1 : now + 15 * 86400000).join(' ')
   try { await navigator.clipboard.writeText(txt); $('btnCopy').textContent = '已复制'
         setTimeout(() => $('btnCopy').textContent = '复制摘要', 1400) } catch (e) { alert(txt) }
 }

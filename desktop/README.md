@@ -28,6 +28,18 @@ npx @tauri-apps/cli build                  # 发布：NSIS 安装包（src-tauri
 
 前提：Rust MSVC 工具链、Visual Studio Build Tools（链接器）、WebView2 运行时（Win10/11 自带）。
 
+`build.rs` 在调用 Tauri 构建逻辑前检查根目录 HTML 与内嵌副本；不一致就停止，提示先运行同步脚本。该检查兼容 LF/CRLF，也覆盖直接 Cargo 构建，避免仅依赖手动同步或 CI。
+
+无需 Tauri 依赖即可单独测试此保护（在 Visual Studio Developer PowerShell 中执行，确保 x64 链接器和 LIB 已配置；输出到本地临时产物目录）：
+
+```powershell
+New-Item -ItemType Directory -Force output | Out-Null
+rustc --test desktop/tools/panel_guard.rs -o output/panel-guard-tests.exe
+./output/panel-guard-tests.exe
+```
+
+`npx @tauri-apps/cli` 在本地未安装时会下载工具；离线评估或未授权安装时不要运行此命令。现有 Rust、SDK 或 WebView2 不代表 Tauri CLI 和锁定的 Cargo 依赖已齐全。
+
 ## 刻意的取舍
 
 - **权限表留空**（`capabilities/default.json` 只有 `core:default`）：面板是纯静态页面，不需要任何 IPC 能力，少给一分是一分。

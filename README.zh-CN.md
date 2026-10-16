@@ -13,7 +13,7 @@
 > 高峰 = 北京时间（UTC+8）周一至周五 09:00–12:00、14:00–18:00，不含中国法定节假日。
 > 其余全部时段 —— 工作日夜里、午休 12:00–14:00、整个周末、整个节假日 —— 都按高峰价的 50% 计费。
 
-同一批 token，单价差 2 倍，只看请求什么时候跑完。
+同模型、同量 token，两档单价差 2 倍。官方定价页未说明跨时段请求如何归档，以实际账单为准。
 
 ## 跑起来
 
@@ -33,17 +33,17 @@ node desktop/tools/sync-panel.mjs        # 把当前面板同步进壳
 cd desktop && npx @tauri-apps/cli build  # → src-tauri/target/release/bundle/nsis/
 ```
 
-CI 会校验壳内嵌的副本与 `index.html` 一致，壳不可能带着旧面板发出去。
+本地 Rust 构建会校验内嵌副本与 `index.html` 一致，不一致就停止构建并提示同步。直接使用 Cargo 构建也有此保护；CI 另有一致性检查。
 
 跑测试（需要 Node 20+，无第三方依赖）：
 
 ```bash
-node --test        # 10 个用例 / 38 条断言
+node --test        # 逻辑、CLI、安装和渲染回归
 ```
 
 ## 页面显示什么
 
-它是 PC 面板，不是会整页滚动的网页：三栏工作区，视口高度内排布、页面不滚动，支持深浅色与键盘操作。
+三栏工作区在视口高度内排布，支持深浅色与键盘操作。窗口窄于 1180px 时可横向滚动到其余栏；输入框中的方向键保留原生行为。
 
 | 区域 | 内容 |
 |---|---|
@@ -57,10 +57,10 @@ node --test        # 10 个用例 / 38 条断言
 
 ## 数据从哪来
 
-- 时段规则与单价：官方定价页脚注 `api-docs.deepseek.com/quick_start/pricing`
+- 时段规则与单价：[官方定价页](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)，2026-10-15 核对
 - 模型名与版本：实调 `GET https://api.deepseek.com/models`
 - 节假日：国务院办公厅《关于 2026 年部分节假日安排的通知》，33 天
-- 逻辑：`node --test` 跑 10 个用例 / 38 条断言，覆盖 09:00 / 12:00 / 14:00 / 18:00 四个边界、周末、春节与国庆、下次切换算法、空闲价 = 高峰价 ÷ 2，以及 CLI 退出码。CI 在 Ubuntu 与 Windows、Node 20 与 22 上跑。
+- 逻辑：`node --test` 覆盖时段边界、节假日、下次切换、半价关系、CLI 参数与时间窗口、独立目录安装、年份覆盖及固定时钟渲染。已有 CI 使用 Ubuntu/Windows、Node 20/22；本地测试无需 CI。
 
 ## 模型名
 
@@ -95,11 +95,20 @@ node skills/deepseek-pricing-tier/scripts/deepseek_tier.mjs --json     # 给 Age
 node skills/deepseek-pricing-tier/scripts/deepseek_tier.mjs --days 7   # 未来切换时刻
 ```
 
-退出码 0 = 空闲，3 = 高峰，2 = 出错。所以 `node deepseek_tier.mjs --quiet && run_your_batch`
-本身就能把批处理推到便宜时段。
+退出码 0 = 空闲，3 = 高峰，2 = 出错或节假日覆盖不完整。`node deepseek_tier.mjs --quiet && run_your_batch`
+仅在此次检查返回 0 时执行批处理；高峰时跳过，不会等待、重试或自动延后。`--quiet` 下警告仍写入 stderr。
 
-安装技能：把 `skills/deepseek-pricing-tier/` 复制进 Hermes 技能目录，或用 `DEEPSEEK_PANEL_HTML`
-指向 `index.html`。
+`--days N` 接受 0–366 的整数，按滚动区间 `[at, at + N×24小时)` 列出切换：包含恰好落在起点的切换，排除终点；0 不列出切换。`--at` 必须是含秒和明确 `Z` 或时区偏移的 ISO 日期时间。网页的7天概览则按今天北京时间零点起的7个自然日统计。
+
+安装时需**同时带上 HTML 依赖**。在仓库内执行下列命令，目标须为尚不存在的技能目录，避免覆盖其他改动：
+
+```bash
+node tools/install-skill.mjs /path/to/hermes/skills/deepseek-pricing-tier
+```
+
+也可从任意工作目录用绝对路径调用安装脚本。安装后的 `scripts/deepseek_tier.mjs` 不依赖当前工作目录。手动安装需把技能目录和仓库 `index.html` 一同放入目标技能目录；或明确用 `--panel` / `DEEPSEEK_PANEL_HTML` 指向仓库 HTML。显式路径不存在时报错，不再静默回退。
+
+JSON 提供 `data_metadata`、`current_calendar_covered`、`calendar_coverage` 和 `warnings`。覆盖检查包含下次切换所查日期及所请求的未来窗口；跨年缺口也返回退出码2。未维护年份仅按周规则估算，不能当作已核实的节假日结论。网页会警告14天时刻表中的任何年份缺口。
 
 ## 改一处就能用
 
@@ -114,7 +123,7 @@ nextSwitch(ts)    // 下一次档位切换的时间戳
 daySegments(ts)   // 某天（北京时间）的高峰区间
 ```
 
-明年的放假通知出来后，把日期加进 `HOLIDAYS` 即可。
+明年的放假通知出来后，核实日期并加入 `HOLIDAYS`，再更新 `DATA_METADATA.holiday_years` 及来源。重新核对价格后才能更新 `pricing_checked_on`。
 
 ## 两个坑
 
