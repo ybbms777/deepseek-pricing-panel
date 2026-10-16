@@ -1,0 +1,14 @@
+# 行尾统一为 LF。
+#
+# 这个仓库里既有手写的 markdown/YAML/Rust，也有生成物（desktop/dist/*、tier 同源逻辑），
+# 而 Windows 上 Git 默认 core.autocrlf=true 会把检出写成 CRLF。混用曾造成两类真实问题：
+#   1) 「内嵌面板一致性」这类字节/哈希检查在 Windows 检出下误报漂移；
+#   2) 走 GitHub API 提交时传入的是磁盘原始字节（CRLF），与本地 git 归一化后存储的
+#      blob 哈希不同，同一份内容出现两个 blob，diff 与审查都会变脏。
+# 因此显式钉死：文本一律入库为 LF、检出也是 LF。
+* text=auto eol=lf
+
+# 二进制：永不按文本处理（Tauri 图标集）
+*.png binary
+*.ico binary
+*.icns binary
