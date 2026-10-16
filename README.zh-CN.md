@@ -35,6 +35,10 @@ cd desktop && npx @tauri-apps/cli build  # → src-tauri/target/release/bundle/n
 
 本地 Rust 构建会校验内嵌副本与 `index.html` 一致，不一致就停止构建并提示同步。直接使用 Cargo 构建也有此保护；CI 另有一致性检查。
 
+**下载**：安装包由 GitHub Actions 在打标签的那个提交上、于 `windows-latest` 构建，与 `SHA256SUMS.txt` 一起附在 [Releases](https://github.com/ybbms777/deepseek-pricing-panel/releases) —— 不发布任何手工本地构建的产物。
+
+如实说明限制：安装包**未签名**（SmartScreen 会提示），需要目标电脑已有 WebView2（Win10/11 自带），托盘与窗口交互**尚未在真实桌面上做过人工验收** —— 已验证的只有面板逻辑、构建与一致性守卫。只想看面板就直接打开 `index.html`，不需要安装。
+
 跑测试（需要 Node 20+，无第三方依赖）：
 
 ```bash

@@ -35,6 +35,10 @@ cd desktop && npx @tauri-apps/cli build  # → src-tauri/target/release/bundle/n
 
 The local Rust build checks that the embedded copy matches `index.html` and stops on drift. Run the sync command before building. This also protects direct Cargo builds; CI has a separate drift check.
 
+**Download:** the installer is built by GitHub Actions on `windows-latest` at the tagged commit and attached to [Releases](https://github.com/ybbms777/deepseek-pricing-panel/releases) together with `SHA256SUMS.txt` — no hand-made local build is published.
+
+Known limits, stated plainly: the installer is **unsigned** (SmartScreen will warn), it needs an existing WebView2 runtime (built into Win10/11), and the tray/window interactions have **not** been acceptance-tested on a real desktop yet — only the panel logic, the build and the drift guard are verified. If you only want to read the panel, open `index.html`; nothing needs installing.
+
 Run the tests (Node 20+, no third-party packages):
 
 ```bash
